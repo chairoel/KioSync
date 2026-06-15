@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">KioSync</string>
+    <string name="device_admin_description">KioSync Device Owner Admin</string>
+</resources>
