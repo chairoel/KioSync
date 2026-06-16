@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -76,8 +78,24 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf("")
                 }
 
-                var pinError by remember {
+                val pinError = remember {
                     mutableStateOf(false)
+                }
+
+                fun closeAdminDialog(pinError: MutableState<Boolean>) {
+                    showAdminDialog = false
+                    pin = ""
+                    pinError.value = false
+                }
+
+                fun setKioskMode(enabled: Boolean) {
+                    if (enabled) {
+                        enableKioskMode()
+                    } else {
+                        disableKioskMode()
+                    }
+
+                    kioskEnabled = enabled
                 }
 
                 Column(
@@ -109,9 +127,7 @@ class MainActivity : ComponentActivity() {
                 if (showAdminDialog) {
                     AlertDialog(
                         onDismissRequest = {
-                            showAdminDialog = false
-                            pin = ""
-                            pinError = false
+                            closeAdminDialog(pinError)
                         },
                         title = {
                             Text("Admin Mode")
@@ -132,19 +148,22 @@ class MainActivity : ComponentActivity() {
                                     value = pin,
                                     onValueChange = {
                                         pin = it
-                                        pinError = false
+                                            .filter(Char::isDigit)
+                                            .take(ADMIN_PIN.length)
+                                        pinError.value = false
                                     },
                                     label = {
                                         Text("PIN")
                                     },
-                                    isError = pinError,
+                                    isError = pinError.value,
+                                    singleLine = true,
                                     visualTransformation = PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(
                                         keyboardType = KeyboardType.NumberPassword
                                     )
                                 )
 
-                                if (pinError) {
+                                if (pinError.value) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text("PIN salah")
                                 }
@@ -154,19 +173,10 @@ class MainActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     if (pin == ADMIN_PIN) {
-                                        showAdminDialog = false
-                                        pin = ""
-                                        pinError = false
-
-                                        if (kioskEnabled) {
-                                            disableKioskMode()
-                                            kioskEnabled = false
-                                        } else {
-                                            enableKioskMode()
-                                            kioskEnabled = true
-                                        }
+                                        closeAdminDialog(pinError)
+                                        setKioskMode(!kioskEnabled)
                                     } else {
-                                        pinError = true
+                                        pinError.value = true
                                     }
                                 }
                             ) {
@@ -182,9 +192,7 @@ class MainActivity : ComponentActivity() {
                         dismissButton = {
                             TextButton(
                                 onClick = {
-                                    showAdminDialog = false
-                                    pin = ""
-                                    pinError = false
+                                    closeAdminDialog(pinError)
                                 }
                             ) {
                                 Text("Batal")
@@ -247,9 +255,7 @@ class MainActivity : ComponentActivity() {
 
     private fun setKioskEnabled(enabled: Boolean) {
         getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_KIOSK_ENABLED, enabled)
-            .apply()
+            .edit { putBoolean(KEY_KIOSK_ENABLED, enabled) }
     }
 
     private fun checkDeviceOwnerStatus() {

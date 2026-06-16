@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.util.Log
 import com.mascill.kiosync.MainActivity
 
@@ -48,16 +47,14 @@ object KioSyncKioskPolicy {
             Log.e(TAG, "Failed to set persistent HOME activity", e)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                dpm.setLockTaskFeatures(
-                    admin,
-                    DevicePolicyManager.LOCK_TASK_FEATURE_NONE
-                )
-                Log.d(TAG, "Lock Task features disabled")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to set Lock Task features", e)
-            }
+        try {
+            dpm.setLockTaskFeatures(
+                admin,
+                DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+            )
+            Log.d(TAG, "Lock Task features disabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set Lock Task features", e)
         }
 
         Log.d(TAG, "Kiosk policy applied")
@@ -89,13 +86,11 @@ object KioSyncKioskPolicy {
             Log.e(TAG, "Failed to clear persistent preferred activities", e)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                dpm.setStatusBarDisabled(admin, false)
-                Log.d(TAG, "Status bar enabled")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to enable status bar", e)
-            }
+        try {
+            dpm.setStatusBarDisabled(admin, false)
+            Log.d(TAG, "Status bar enabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enable status bar", e)
         }
 
         try {
