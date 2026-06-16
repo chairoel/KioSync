@@ -3,6 +3,9 @@ package com.mascill.kiosync
 import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -43,21 +46,22 @@ class MainActivity : ComponentActivity() {
 
         private const val PREF_NAME = "kiosync_settings"
         private const val KEY_KIOSK_ENABLED = "kiosk_enabled"
+        private const val BOOT_KIOSK_GRACE_PERIOD_MS = 60_000L
 
         // Untuk development dulu.
         // Untuk production jangan hardcode PIN seperti ini.
         private const val ADMIN_PIN = "123456"
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var delayedKioskStart: Runnable? = null
+    private var waitingForSystemInit by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (isKioskEnabled()) {
-            KioSyncKioskPolicy.apply(this)
-            hideSystemBars()
-        } else {
-            showSystemBars()
-        }
+        showSystemBars()
+        waitingForSystemInit = isAutomaticKioskStartDelayed()
 
         checkDeviceOwnerStatus()
 
@@ -105,10 +109,10 @@ class MainActivity : ComponentActivity() {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = if (kioskEnabled) {
-                            "Kiosk Mode Aktif"
-                        } else {
-                            "Kiosk Mode Nonaktif"
+                        text = when {
+                            waitingForSystemInit -> "Initializing device..."
+                            kioskEnabled -> "Kiosk Mode Aktif"
+                            else -> "Kiosk Mode Nonaktif"
                         },
                         modifier = Modifier.clickable {
                             tapCount++
@@ -122,7 +126,13 @@ class MainActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Text("Tap tulisan status 7x untuk Admin Mode")
+                    Text(
+                        text = if (waitingForSystemInit) {
+                            "Menunggu service Android selesai inisialisasi"
+                        } else {
+                            "Tap tulisan status 7x untuk Admin Mode"
+                        }
+                    )
                 }
 
                 if (showAdminDialog) {
@@ -203,18 +213,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        startAutomaticKioskWhenReady()
     }
 
     override fun onResume() {
         super.onResume()
 
         if (isKioskEnabled()) {
-            hideSystemBars()
-            startKioskIfAllowed()
+            startAutomaticKioskWhenReady()
         } else {
+            cancelDelayedKioskStart()
             showSystemBars()
             Log.d(TAG, "Kiosk disabled, skip startLockTask")
         }
+    }
+
+    override fun onDestroy() {
+        cancelDelayedKioskStart()
+        super.onDestroy()
     }
 
     private fun enableKioskMode() {
@@ -222,18 +239,15 @@ class MainActivity : ComponentActivity() {
 
         setKioskEnabled(true)
 
-        KioSyncKioskPolicy.apply(this)
-
-        hideSystemBars()
-        startKioskIfAllowed()
-
-        checkDeviceOwnerStatus()
+        cancelDelayedKioskStart()
+        startKioskNow()
     }
 
     private fun disableKioskMode() {
         Log.d(TAG, "Disable kiosk requested")
 
         setKioskEnabled(false)
+        cancelDelayedKioskStart()
 
         try {
             stopLockTask()
@@ -249,6 +263,66 @@ class MainActivity : ComponentActivity() {
         checkDeviceOwnerStatus()
 
         exitToHome()
+    }
+
+    private fun startAutomaticKioskWhenReady() {
+        if (!isKioskEnabled()) {
+            cancelDelayedKioskStart()
+            waitingForSystemInit = false
+            showSystemBars()
+            return
+        }
+
+        val remainingGracePeriod = remainingBootKioskGracePeriodMs()
+        if (remainingGracePeriod > 0L) {
+            waitingForSystemInit = true
+            showSystemBars()
+            scheduleDelayedKioskStart(remainingGracePeriod)
+            Log.d(TAG, "Delaying kiosk start for ${remainingGracePeriod}ms after boot")
+            return
+        }
+
+        waitingForSystemInit = false
+        startKioskNow()
+    }
+
+    private fun scheduleDelayedKioskStart(delayMs: Long) {
+        cancelDelayedKioskStart()
+
+        delayedKioskStart = Runnable {
+            delayedKioskStart = null
+            waitingForSystemInit = false
+
+            if (isKioskEnabled()) {
+                startKioskNow()
+            } else {
+                showSystemBars()
+                Log.d(TAG, "Kiosk disabled before delayed start")
+            }
+        }
+
+        mainHandler.postDelayed(delayedKioskStart!!, delayMs)
+    }
+
+    private fun cancelDelayedKioskStart() {
+        delayedKioskStart?.let(mainHandler::removeCallbacks)
+        delayedKioskStart = null
+    }
+
+    private fun startKioskNow() {
+        KioSyncKioskPolicy.apply(this)
+        hideSystemBars()
+        startKioskIfAllowed()
+        checkDeviceOwnerStatus()
+    }
+
+    private fun isAutomaticKioskStartDelayed(): Boolean {
+        return isKioskEnabled() && remainingBootKioskGracePeriodMs() > 0L
+    }
+
+    private fun remainingBootKioskGracePeriodMs(): Long {
+        return (BOOT_KIOSK_GRACE_PERIOD_MS - SystemClock.elapsedRealtime())
+            .coerceAtLeast(0L)
     }
 
     private fun isKioskEnabled(): Boolean {
