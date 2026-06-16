@@ -9,8 +9,8 @@ import com.mascill.kiosync.core.kiosk.KioskController
 import com.mascill.kiosync.core.kiosk.KioskStartScheduler
 import com.mascill.kiosync.core.navigation.AppLauncher
 import com.mascill.kiosync.core.system.SystemBarsController
+import com.mascill.kiosync.di.Injection
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModel
-import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModelFactory
 
 class MainActivity : ComponentActivity() {
 
@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val viewModel: KioskViewModel by viewModels {
-        KioskViewModelFactory.getInstance(applicationContext)
+        Injection.provideKioskViewModelFactory(applicationContext)
     }
 
     private val appLauncher by lazy {

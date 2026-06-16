@@ -6,6 +6,7 @@ import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.data.repository.KioskRepositoryImpl
 import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.core.system.SystemElapsedRealtimeClock
+import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModelFactory
 
 object Injection {
 
@@ -14,6 +15,21 @@ object Injection {
 
     @Volatile
     private var repository: KioskRepository? = null
+
+    @Volatile
+    private var kioskViewModelFactory: KioskViewModelFactory? = null
+
+    fun provideKioskViewModelFactory(context: Context): KioskViewModelFactory {
+        return kioskViewModelFactory ?: synchronized(this) {
+            val appContext = context.applicationContext
+            kioskViewModelFactory ?: KioskViewModelFactory(
+                kioskRepository = provideKioskRepository(appContext),
+                appPackageName = provideAppPackageName(appContext),
+                elapsedRealtimeClock = provideElapsedRealtimeClock()
+            )
+                .also { kioskViewModelFactory = it }
+        }
+    }
 
     fun provideKioskRepository(context: Context): KioskRepository {
         return repository ?: synchronized(this) {

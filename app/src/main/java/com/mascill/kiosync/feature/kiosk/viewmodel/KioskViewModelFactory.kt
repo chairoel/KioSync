@@ -1,11 +1,9 @@
 package com.mascill.kiosync.feature.kiosk.viewmodel
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.system.ElapsedRealtimeClock
-import com.mascill.kiosync.di.Injection
 
 @Suppress("UNCHECKED_CAST")
 class KioskViewModelFactory(
@@ -25,21 +23,5 @@ class KioskViewModelFactory(
 
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }
-    }
-
-    companion object {
-        @Volatile
-        private var instance: KioskViewModelFactory? = null
-
-        fun getInstance(context: Context): KioskViewModelFactory =
-            instance ?: synchronized(this) {
-                val appContext = context.applicationContext
-                instance ?: KioskViewModelFactory(
-                    kioskRepository = Injection.provideKioskRepository(appContext),
-                    appPackageName = Injection.provideAppPackageName(appContext),
-                    elapsedRealtimeClock = Injection.provideElapsedRealtimeClock()
-                )
-                    .also { instance = it }
-            }
     }
 }
