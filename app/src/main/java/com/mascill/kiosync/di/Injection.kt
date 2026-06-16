@@ -1,18 +1,33 @@
 package com.mascill.kiosync.di
 
 import android.content.Context
-import com.mascill.kiosync.data.repository.KioSyncRepository
-import com.mascill.kiosync.data.repository.KioSyncRepositoryImpl
+import com.mascill.kiosync.core.data.datastore.KioskPreferencesDataSource
+import com.mascill.kiosync.core.data.repository.KioskRepository
+import com.mascill.kiosync.core.data.repository.KioskRepositoryImpl
 
 object Injection {
 
     @Volatile
-    private var repository: KioSyncRepository? = null
+    private var preferencesDataSource: KioskPreferencesDataSource? = null
 
-    fun provideKioSyncRepository(context: Context): KioSyncRepository {
+    @Volatile
+    private var repository: KioskRepository? = null
+
+    fun provideKioskRepository(context: Context): KioskRepository {
         return repository ?: synchronized(this) {
-            repository ?: KioSyncRepositoryImpl(context.applicationContext)
+            val appContext = context.applicationContext
+            repository ?: KioskRepositoryImpl(
+                context = appContext,
+                preferencesDataSource = provideKioskPreferencesDataSource(appContext)
+            )
                 .also { repository = it }
+        }
+    }
+
+    private fun provideKioskPreferencesDataSource(context: Context): KioskPreferencesDataSource {
+        return preferencesDataSource ?: synchronized(this) {
+            preferencesDataSource ?: KioskPreferencesDataSource(context.applicationContext)
+                .also { preferencesDataSource = it }
         }
     }
 }
