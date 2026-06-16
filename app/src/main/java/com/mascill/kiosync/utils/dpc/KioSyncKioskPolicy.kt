@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.util.Log
-import com.mascill.kiosync.di.KioSyncDependencies
+import com.mascill.kiosync.di.Injection
 
 object KioSyncKioskPolicy {
 
@@ -132,7 +132,7 @@ object KioSyncKioskPolicy {
     }
 
     private fun getStrictLockTaskPackages(context: Context): Array<String> {
-        return (listOf(context.packageName) + KioSyncDependencies.repository(context).getAllowedLaunchablePackages())
+        return (listOf(context.packageName) + Injection.provideKioSyncRepository(context).getAllowedLaunchablePackages())
             .distinct()
             .toTypedArray()
     }

@@ -1,4 +1,4 @@
-package com.mascill.kiosync.ui
+package com.mascill.kiosync.ui.model
 
 import com.mascill.kiosync.data.model.LaunchableApp
 

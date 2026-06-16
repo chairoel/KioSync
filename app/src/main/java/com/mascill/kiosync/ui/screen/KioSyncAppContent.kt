@@ -1,7 +1,7 @@
 package com.mascill.kiosync.ui.screen
 
 import androidx.compose.runtime.Composable
-import com.mascill.kiosync.ui.KioSyncUiState
+import com.mascill.kiosync.ui.model.KioSyncUiState
 import com.mascill.kiosync.ui.components.AdminPanelDialog
 import com.mascill.kiosync.ui.components.AdminPinDialog
 import com.mascill.kiosync.ui.components.KioSyncHomeContent

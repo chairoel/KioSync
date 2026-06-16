@@ -1,11 +1,11 @@
-package com.mascill.kiosync.ui
+package com.mascill.kiosync.ui.viewmodel
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import com.mascill.kiosync.data.repository.KioSyncRepository
+import com.mascill.kiosync.ui.model.KioSyncUiState
 
 class MainViewModel(
     private val repository: KioSyncRepository
@@ -35,8 +35,8 @@ class MainViewModel(
         return repository.isKioskEnabled()
     }
 
-    fun getAllowedLaunchablePackages(): Set<String> {
-        return repository.getAllowedLaunchablePackages()
+    fun isAllowedLaunchablePackage(packageName: String): Boolean {
+        return packageName in repository.getAllowedLaunchablePackages()
     }
 
     fun onStatusTap() {
@@ -97,19 +97,6 @@ class MainViewModel(
         uiState = uiState.copy(allowedPackages = nextAllowedPackages)
 
         return uiState.kioskEnabled
-    }
-
-    class Factory(
-        private val repository: KioSyncRepository
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
-                return MainViewModel(repository) as T
-            }
-
-            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
-        }
     }
 
     private companion object {

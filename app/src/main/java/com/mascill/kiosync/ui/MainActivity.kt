@@ -1,22 +1,19 @@
 package com.mascill.kiosync.ui
 
-import android.app.admin.DevicePolicyManager
-import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import com.mascill.kiosync.di.KioSyncDependencies
 import com.mascill.kiosync.ui.screen.KioSyncAppContent
 import com.mascill.kiosync.ui.theme.KioSyncTheme
-import com.mascill.kiosync.utils.dpc.KioSyncKioskPolicy
+import com.mascill.kiosync.ui.viewmodel.MainViewModel
+import com.mascill.kiosync.ui.viewmodel.KioSyncViewModelFactory
+import com.mascill.kiosync.utils.kiosk.KioSyncKioskController
+import com.mascill.kiosync.utils.kiosk.KioskStartScheduler
+import com.mascill.kiosync.utils.navigation.AppLauncher
+import com.mascill.kiosync.utils.system.SystemBarsController
 
 class MainActivity : ComponentActivity() {
 
@@ -26,22 +23,54 @@ class MainActivity : ComponentActivity() {
     }
 
     private val viewModel: MainViewModel by viewModels {
-        MainViewModel.Factory(
-            repository = KioSyncDependencies.repository(applicationContext)
-        )
+        KioSyncViewModelFactory.getInstance(applicationContext)
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var delayedKioskStart: Runnable? = null
+    private val appLauncher by lazy {
+        AppLauncher(applicationContext)
+    }
+
+    private val kioskController by lazy {
+        KioSyncKioskController(this)
+    }
+
+    private val kioskStartScheduler = KioskStartScheduler()
+
+    private val systemBarsController by lazy {
+        SystemBarsController(this)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        showSystemBars()
+        systemBarsController.show()
         viewModel.setWaitingForSystemInit(isAutomaticKioskStartDelayed())
 
-        checkDeviceOwnerStatus()
+        logDeviceOwnerStatus()
 
+        renderContent()
+
+        startAutomaticKioskWhenReady()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        if (viewModel.isKioskEnabled()) {
+            startAutomaticKioskWhenReady()
+        } else {
+            kioskStartScheduler.cancel()
+            systemBarsController.show()
+            Log.d(TAG, "Kiosk disabled, skip startLockTask")
+        }
+    }
+
+    override fun onDestroy() {
+        kioskStartScheduler.cancel()
+        super.onDestroy()
+    }
+
+    private fun renderContent() {
         setContent {
             KioSyncTheme {
                 KioSyncAppContent(
@@ -58,25 +87,6 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
-
-        startAutomaticKioskWhenReady()
-    }
-
-    override fun onResume() {
-        super.onResume()
-
-        if (viewModel.isKioskEnabled()) {
-            startAutomaticKioskWhenReady()
-        } else {
-            cancelDelayedKioskStart()
-            showSystemBars()
-            Log.d(TAG, "Kiosk disabled, skip startLockTask")
-        }
-    }
-
-    override fun onDestroy() {
-        cancelDelayedKioskStart()
-        super.onDestroy()
     }
 
     private fun setKioskMode(enabled: Boolean) {
@@ -93,50 +103,45 @@ class MainActivity : ComponentActivity() {
         val shouldApplyPolicy = viewModel.updateAllowedPackage(packageName, allowed)
 
         if (shouldApplyPolicy) {
-            KioSyncKioskPolicy.apply(this)
+            kioskController.applyPolicy()
         }
     }
 
     private fun enableKioskMode() {
         Log.d(TAG, "Enable kiosk requested")
 
-        cancelDelayedKioskStart()
+        kioskStartScheduler.cancel()
         startKioskNow()
     }
 
     private fun disableKioskMode() {
         Log.d(TAG, "Disable kiosk requested")
 
-        cancelDelayedKioskStart()
+        kioskStartScheduler.cancel()
+        kioskController.stopLockTask()
+        kioskController.disablePolicy()
 
-        try {
-            stopLockTask()
-            Log.d(TAG, "Lock Task Mode stopped")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to stop Lock Task Mode", e)
-        }
+        systemBarsController.show()
 
-        KioSyncKioskPolicy.disable(this)
+        logDeviceOwnerStatus()
 
-        showSystemBars()
-
-        checkDeviceOwnerStatus()
-
-        exitToHome()
+        appLauncher.exitToHome(
+            onExitedToHome = ::finishAndRemoveTask
+        )
     }
 
     private fun startAutomaticKioskWhenReady() {
         if (!viewModel.isKioskEnabled()) {
-            cancelDelayedKioskStart()
+            kioskStartScheduler.cancel()
             viewModel.setWaitingForSystemInit(false)
-            showSystemBars()
+            systemBarsController.show()
             return
         }
 
         val remainingGracePeriod = remainingBootKioskGracePeriodMs()
         if (remainingGracePeriod > 0L) {
             viewModel.setWaitingForSystemInit(true)
-            showSystemBars()
+            systemBarsController.show()
             scheduleDelayedKioskStart(remainingGracePeriod)
             Log.d(TAG, "Delaying kiosk start for ${remainingGracePeriod}ms after boot")
             return
@@ -147,33 +152,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun scheduleDelayedKioskStart(delayMs: Long) {
-        cancelDelayedKioskStart()
-
-        delayedKioskStart = Runnable {
-            delayedKioskStart = null
+        kioskStartScheduler.schedule(delayMs) {
             viewModel.setWaitingForSystemInit(false)
 
             if (viewModel.isKioskEnabled()) {
                 startKioskNow()
             } else {
-                showSystemBars()
+                systemBarsController.show()
                 Log.d(TAG, "Kiosk disabled before delayed start")
             }
         }
-
-        mainHandler.postDelayed(delayedKioskStart!!, delayMs)
-    }
-
-    private fun cancelDelayedKioskStart() {
-        delayedKioskStart?.let(mainHandler::removeCallbacks)
-        delayedKioskStart = null
     }
 
     private fun startKioskNow() {
-        KioSyncKioskPolicy.apply(this)
-        hideSystemBars()
-        startKioskIfAllowed()
-        checkDeviceOwnerStatus()
+        kioskController.applyPolicy()
+        systemBarsController.hide()
+        kioskController.startLockTaskIfAllowed()
+        logDeviceOwnerStatus()
     }
 
     private fun isAutomaticKioskStartDelayed(): Boolean {
@@ -185,84 +180,21 @@ class MainActivity : ComponentActivity() {
             .coerceAtLeast(0L)
     }
 
-    private fun checkDeviceOwnerStatus() {
-        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
-
-        val isDeviceOwner = dpm.isDeviceOwnerApp(packageName)
-        val isLockTaskPermitted = dpm.isLockTaskPermitted(packageName)
-
-        Log.d(TAG, "packageName=$packageName")
-        Log.d(TAG, "isDeviceOwner=$isDeviceOwner")
-        Log.d(TAG, "isLockTaskPermitted=$isLockTaskPermitted")
-        Log.d(TAG, "isKioskEnabled=${viewModel.isKioskEnabled()}")
-    }
-
-    private fun startKioskIfAllowed() {
-        val dpm = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
-
-        if (dpm.isLockTaskPermitted(packageName)) {
-            try {
-                startLockTask()
-                Log.d(TAG, "Lock Task Mode started")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start Lock Task Mode", e)
-            }
-        } else {
-            Log.w(TAG, "Lock Task not permitted. App is not allowlisted yet.")
-        }
+    private fun logDeviceOwnerStatus() {
+        kioskController.logDeviceOwnerStatus(
+            isKioskEnabled = viewModel.isKioskEnabled()
+        )
     }
 
     private fun launchAllowedApp(packageName: String) {
-        if (packageName !in viewModel.getAllowedLaunchablePackages()) {
+        if (!viewModel.isAllowedLaunchablePackage(packageName)) {
             Log.w(TAG, "Blocked launch for non-allowlisted package: $packageName")
             return
         }
 
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        if (launchIntent == null) {
-            Log.w(TAG, "No launch intent for package: $packageName")
-            KioSyncKioskPolicy.apply(this)
-            return
-        }
-
-        try {
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(launchIntent)
-            Log.d(TAG, "Launched allowlisted package: $packageName")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch package: $packageName", e)
-        }
-    }
-
-    private fun hideSystemBars() {
-        val windowInsetsController =
-            WindowCompat.getInsetsController(window, window.decorView)
-
-        windowInsetsController.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-
-        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
-    }
-
-    private fun showSystemBars() {
-        val windowInsetsController =
-            WindowCompat.getInsetsController(window, window.decorView)
-
-        windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
-    }
-
-    private fun exitToHome() {
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-
-        try {
-            startActivity(homeIntent)
-            finishAndRemoveTask()
-            Log.d(TAG, "Exited to HOME after kiosk disabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to exit to HOME after kiosk disabled", e)
-        }
+        appLauncher.launchApp(
+            packageName = packageName,
+            onLaunchIntentMissing = kioskController::applyPolicy
+        )
     }
 }
