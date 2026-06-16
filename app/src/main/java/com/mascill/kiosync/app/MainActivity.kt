@@ -1,7 +1,6 @@
 package com.mascill.kiosync.app
 
 import android.os.Bundle
-import android.os.SystemClock
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,7 +16,6 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "KioSyncDPC"
-        private const val BOOT_KIOSK_GRACE_PERIOD_MS = 60_000L
     }
 
     private val viewModel: KioskViewModel by viewModels {
@@ -47,10 +45,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             KioSyncAppScreen(
                 viewModel = viewModel,
-                onStartKiosk = ::startKioskWhenReady,
+                onStartKiosk = ::startKiosk,
+                onDelayKioskStart = ::delayKioskStart,
                 onStopKiosk = ::disableKioskMode,
                 onSetKioskInactive = ::setKioskInactive,
-                onApplyPolicy = ::applyCurrentPolicy,
+                onApplyPolicy = ::applyPolicy,
                 onLaunchApp = ::launchApp
             )
         }
@@ -86,42 +85,23 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "Kiosk disabled, skip startLockTask")
     }
 
-    private fun startKioskWhenReady() {
-        val remainingGracePeriod = remainingBootKioskGracePeriodMs()
-        if (remainingGracePeriod > 0L) {
-            viewModel.setWaitingForSystemInit(true)
-            systemBarsController.show()
-            scheduleDelayedKioskStart(remainingGracePeriod)
-            Log.d(TAG, "Delaying kiosk start for ${remainingGracePeriod}ms after boot")
-            return
-        }
-
-        viewModel.setWaitingForSystemInit(false)
-        startKioskNow()
-    }
-
-    private fun scheduleDelayedKioskStart(delayMs: Long) {
+    private fun delayKioskStart(delayMs: Long) {
+        systemBarsController.show()
         kioskStartScheduler.schedule(delayMs) {
             viewModel.onDelayedKioskStartReady()
         }
+        Log.d(TAG, "Delaying kiosk start for ${delayMs}ms after boot")
     }
 
-    private fun startKioskNow() {
-        applyCurrentPolicy()
+    private fun startKiosk(lockTaskPackages: Set<String>) {
+        applyPolicy(lockTaskPackages)
         systemBarsController.hide()
         kioskController.startLockTaskIfAllowed()
         logDeviceOwnerStatus()
     }
 
-    private fun applyCurrentPolicy() {
-        kioskController.applyPolicy(
-            lockTaskPackages = viewModel.lockTaskPackages(packageName)
-        )
-    }
-
-    private fun remainingBootKioskGracePeriodMs(): Long {
-        return (BOOT_KIOSK_GRACE_PERIOD_MS - SystemClock.elapsedRealtime())
-            .coerceAtLeast(0L)
+    private fun applyPolicy(lockTaskPackages: Set<String>) {
+        kioskController.applyPolicy(lockTaskPackages = lockTaskPackages)
     }
 
     private fun logDeviceOwnerStatus() {
@@ -133,7 +113,7 @@ class MainActivity : ComponentActivity() {
     private fun launchApp(packageName: String) {
         appLauncher.launchApp(
             packageName = packageName,
-            onLaunchIntentMissing = ::applyCurrentPolicy
+            onLaunchIntentMissing = viewModel::onLaunchIntentMissing
         )
     }
 }

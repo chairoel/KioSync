@@ -16,10 +16,11 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun KioSyncAppScreen(
     viewModel: KioskViewModel,
-    onStartKiosk: () -> Unit,
+    onStartKiosk: (Set<String>) -> Unit,
+    onDelayKioskStart: (Long) -> Unit,
     onStopKiosk: () -> Unit,
     onSetKioskInactive: () -> Unit,
-    onApplyPolicy: () -> Unit,
+    onApplyPolicy: (Set<String>) -> Unit,
     onLaunchApp: (String) -> Unit
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -28,10 +29,11 @@ fun KioSyncAppScreen(
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             viewModel.sideEffects.collect { sideEffect ->
                 when (sideEffect) {
-                    KioskSideEffect.StartKiosk -> onStartKiosk()
+                    is KioskSideEffect.StartKiosk -> onStartKiosk(sideEffect.lockTaskPackages)
+                    is KioskSideEffect.DelayKioskStart -> onDelayKioskStart(sideEffect.delayMs)
                     KioskSideEffect.StopKiosk -> onStopKiosk()
                     KioskSideEffect.SetKioskInactive -> onSetKioskInactive()
-                    KioskSideEffect.ApplyPolicy -> onApplyPolicy()
+                    is KioskSideEffect.ApplyPolicy -> onApplyPolicy(sideEffect.lockTaskPackages)
                     is KioskSideEffect.LaunchApp -> onLaunchApp(sideEffect.packageName)
                 }
             }

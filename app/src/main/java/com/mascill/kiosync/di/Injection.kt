@@ -4,6 +4,8 @@ import android.content.Context
 import com.mascill.kiosync.core.data.datastore.KioskPreferencesDataSource
 import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.data.repository.KioskRepositoryImpl
+import com.mascill.kiosync.core.system.ElapsedRealtimeClock
+import com.mascill.kiosync.core.system.SystemElapsedRealtimeClock
 
 object Injection {
 
@@ -22,6 +24,14 @@ object Injection {
             )
                 .also { repository = it }
         }
+    }
+
+    fun provideAppPackageName(context: Context): String {
+        return context.applicationContext.packageName
+    }
+
+    fun provideElapsedRealtimeClock(): ElapsedRealtimeClock {
+        return SystemElapsedRealtimeClock
     }
 
     private fun provideKioskPreferencesDataSource(context: Context): KioskPreferencesDataSource {

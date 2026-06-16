@@ -4,29 +4,32 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.model.LaunchableApp
+import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.feature.kiosk.model.KioskDialogState
 import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
 import com.mascill.kiosync.feature.kiosk.model.KioskUiState
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class KioskViewModel(
-    private val repository: KioskRepository
+    private val repository: KioskRepository,
+    private val appPackageName: String,
+    private val elapsedRealtimeClock: ElapsedRealtimeClock
 ) : ViewModel() {
 
     private val waitingForSystemInit = MutableStateFlow(false)
     private val launchableApps = MutableStateFlow(repository.getLaunchableApps())
     private val dialogState = MutableStateFlow(KioskDialogState())
-    private val _sideEffects = MutableSharedFlow<KioskSideEffect>()
+    private val sideEffectChannel = Channel<KioskSideEffect>(Channel.BUFFERED)
 
-    val sideEffects = _sideEffects.asSharedFlow()
+    val sideEffects = sideEffectChannel.receiveAsFlow()
 
     val uiState: StateFlow<KioskUiState> = combine(
         waitingForSystemInit,
@@ -53,10 +56,6 @@ class KioskViewModel(
 
     private var statusTapCount = 0
 
-    fun setWaitingForSystemInit(waiting: Boolean) {
-        waitingForSystemInit.value = waiting
-    }
-
     fun onHostResumed() {
         viewModelScope.launch {
             emitCurrentKioskStateEffect()
@@ -66,7 +65,12 @@ class KioskViewModel(
     fun onDelayedKioskStartReady() {
         viewModelScope.launch {
             waitingForSystemInit.value = false
-            emitCurrentKioskStateEffect()
+
+            if (repository.kioskEnabled.first()) {
+                sendSideEffect(KioskSideEffect.StartKiosk(lockTaskPackages()))
+            } else {
+                sendSideEffect(KioskSideEffect.SetKioskInactive)
+            }
         }
     }
 
@@ -75,9 +79,9 @@ class KioskViewModel(
             repository.setKioskEnabled(enabled)
             waitingForSystemInit.value = false
 
-            _sideEffects.emit(
+            sendSideEffect(
                 if (enabled) {
-                    KioskSideEffect.StartKiosk
+                    kioskStartSideEffect()
                 } else {
                     KioskSideEffect.StopKiosk
                 }
@@ -140,7 +144,7 @@ class KioskViewModel(
             repository.setAllowedPackages(nextAllowedPackages)
 
             if (uiState.value.kioskEnabled) {
-                _sideEffects.emit(KioskSideEffect.ApplyPolicy)
+                sendSideEffect(KioskSideEffect.ApplyPolicy(lockTaskPackages(nextAllowedPackages)))
             }
         }
     }
@@ -148,29 +152,41 @@ class KioskViewModel(
     fun onLaunchApp(packageName: String) {
         viewModelScope.launch {
             if (packageName in allowedLaunchablePackages()) {
-                _sideEffects.emit(KioskSideEffect.LaunchApp(packageName))
+                sendSideEffect(KioskSideEffect.LaunchApp(packageName))
             }
         }
     }
 
-    fun lockTaskPackages(appPackageName: String): Set<String> {
-        return setOf(appPackageName) + allowedLaunchablePackages()
+    fun onLaunchIntentMissing() {
+        viewModelScope.launch {
+            sendSideEffect(KioskSideEffect.ApplyPolicy(lockTaskPackages()))
+        }
     }
 
-    private fun allowedLaunchablePackages(): Set<String> {
+    fun lockTaskPackages(): Set<String> {
+        return lockTaskPackages(uiState.value.allowedPackages)
+    }
+
+    private fun lockTaskPackages(allowedPackages: Set<String>): Set<String> {
+        return setOf(appPackageName) + allowedLaunchablePackages(allowedPackages)
+    }
+
+    private fun allowedLaunchablePackages(
+        allowedPackages: Set<String> = uiState.value.allowedPackages
+    ): Set<String> {
         val launchablePackageNames = uiState.value.launchableApps
             .mapTo(mutableSetOf()) { it.packageName }
 
-        return uiState.value.allowedPackages
+        return allowedPackages
             .filterTo(mutableSetOf()) { it in launchablePackageNames }
     }
 
     private suspend fun emitCurrentKioskStateEffect() {
         val kioskEnabled = repository.kioskEnabled.first()
 
-        _sideEffects.emit(
+        sendSideEffect(
             if (kioskEnabled) {
-                KioskSideEffect.StartKiosk
+                kioskStartSideEffect()
             } else {
                 waitingForSystemInit.value = false
                 KioskSideEffect.SetKioskInactive
@@ -178,8 +194,29 @@ class KioskViewModel(
         )
     }
 
+    private suspend fun sendSideEffect(sideEffect: KioskSideEffect) {
+        sideEffectChannel.send(sideEffect)
+    }
+
+    private fun kioskStartSideEffect(): KioskSideEffect {
+        val remainingGracePeriodMs = remainingBootKioskGracePeriodMs()
+        return if (remainingGracePeriodMs > 0L) {
+            waitingForSystemInit.value = true
+            KioskSideEffect.DelayKioskStart(remainingGracePeriodMs)
+        } else {
+            waitingForSystemInit.value = false
+            KioskSideEffect.StartKiosk(lockTaskPackages())
+        }
+    }
+
+    private fun remainingBootKioskGracePeriodMs(): Long {
+        return (BOOT_KIOSK_GRACE_PERIOD_MS - elapsedRealtimeClock.elapsedRealtimeMs())
+            .coerceAtLeast(0L)
+    }
+
     private companion object {
         const val STATUS_TAP_TO_OPEN_ADMIN = 7
+        const val BOOT_KIOSK_GRACE_PERIOD_MS = 60_000L
 
         // Untuk development dulu. Untuk production jangan hardcode PIN seperti ini.
         const val ADMIN_PIN = "123456"

@@ -6,6 +6,7 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
 import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.model.LaunchableApp
+import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModel
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +54,7 @@ class KioskViewModelTest {
             allowedPackages = setOf(ALLOWED_PACKAGE),
             launchableApps = listOf(allowedApp())
         )
-        val viewModel = KioskViewModel(repository)
+        val viewModel = createViewModel(repository)
         collectUiState(viewModel)
 
         assertTrue(viewModel.uiState.value.kioskEnabled)
@@ -63,7 +64,7 @@ class KioskViewModelTest {
 
     @Test
     fun statusTap_sevenTimes_opensPinDialog() = runViewModelTest {
-        val viewModel = KioskViewModel(FakeKioskRepository())
+        val viewModel = createViewModel()
         collectUiState(viewModel)
 
         repeat(7) {
@@ -76,7 +77,7 @@ class KioskViewModelTest {
 
     @Test
     fun confirmPin_validPin_opensAdminPanel() = runViewModelTest {
-        val viewModel = KioskViewModel(FakeKioskRepository())
+        val viewModel = createViewModel()
         collectUiState(viewModel)
 
         viewModel.onPinChange("123456")
@@ -90,7 +91,7 @@ class KioskViewModelTest {
 
     @Test
     fun confirmPin_invalidPin_showsError() = runViewModelTest {
-        val viewModel = KioskViewModel(FakeKioskRepository())
+        val viewModel = createViewModel()
         collectUiState(viewModel)
 
         viewModel.onPinChange("111111")
@@ -104,7 +105,7 @@ class KioskViewModelTest {
     @Test
     fun kioskToggle_savesStateAndEmitsStartOrStop() = runViewModelTest {
         val repository = FakeKioskRepository()
-        val viewModel = KioskViewModel(repository)
+        val viewModel = createViewModel(repository)
         collectUiState(viewModel)
 
         val startEffect = async { viewModel.sideEffects.first() }
@@ -112,7 +113,10 @@ class KioskViewModelTest {
         advanceUntilIdle()
 
         assertTrue(repository.kioskEnabledFlow.value)
-        assertEquals(KioskSideEffect.StartKiosk, startEffect.await())
+        assertEquals(
+            KioskSideEffect.StartKiosk(setOf(APP_PACKAGE)),
+            startEffect.await()
+        )
 
         val stopEffect = async { viewModel.sideEffects.first() }
         viewModel.onKioskEnabledChange(false)
@@ -124,7 +128,7 @@ class KioskViewModelTest {
 
     @Test
     fun hostResumed_whenKioskActive_emitsStartKiosk() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(kioskEnabled = true)
         )
 
@@ -132,12 +136,73 @@ class KioskViewModelTest {
         viewModel.onHostResumed()
         advanceUntilIdle()
 
-        assertEquals(KioskSideEffect.StartKiosk, effect.await())
+        assertEquals(
+            KioskSideEffect.StartKiosk(setOf(APP_PACKAGE)),
+            effect.await()
+        )
     }
 
     @Test
+    fun hostResumed_whenKioskActiveDuringBootGracePeriod_emitsDelayKioskStart() =
+        runViewModelTest {
+            val viewModel = createViewModel(
+                repository = FakeKioskRepository(kioskEnabled = true),
+                elapsedRealtimeMs = 10_000L
+            )
+            collectUiState(viewModel)
+
+            val effect = async { viewModel.sideEffects.first() }
+            viewModel.onHostResumed()
+            advanceUntilIdle()
+
+            assertEquals(KioskSideEffect.DelayKioskStart(50_000L), effect.await())
+            assertTrue(viewModel.uiState.value.waitingForSystemInit)
+        }
+
+    @Test
+    fun sideEffect_emittedBeforeCollection_isDeliveredToCollector() = runViewModelTest {
+        val viewModel = createViewModel(
+            repository = FakeKioskRepository(kioskEnabled = true),
+            elapsedRealtimeMs = 10_000L
+        )
+
+        viewModel.onHostResumed()
+        advanceUntilIdle()
+
+        assertEquals(
+            KioskSideEffect.DelayKioskStart(50_000L),
+            viewModel.sideEffects.first()
+        )
+    }
+
+    @Test
+    fun delayedKioskStartReady_whenKioskActive_emitsStartKioskAndClearsWaiting() =
+        runViewModelTest {
+            val viewModel = createViewModel(
+                repository = FakeKioskRepository(kioskEnabled = true),
+                elapsedRealtimeMs = 10_000L
+            )
+            collectUiState(viewModel)
+
+            val delayEffect = async { viewModel.sideEffects.first() }
+            viewModel.onHostResumed()
+            advanceUntilIdle()
+            assertEquals(KioskSideEffect.DelayKioskStart(50_000L), delayEffect.await())
+
+            val startEffect = async { viewModel.sideEffects.first() }
+            viewModel.onDelayedKioskStartReady()
+            advanceUntilIdle()
+
+            assertEquals(
+                KioskSideEffect.StartKiosk(setOf(APP_PACKAGE)),
+                startEffect.await()
+            )
+            assertFalse(viewModel.uiState.value.waitingForSystemInit)
+        }
+
+    @Test
     fun hostResumed_whenKioskInactive_emitsSetKioskInactive() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(kioskEnabled = false)
         )
 
@@ -152,9 +217,17 @@ class KioskViewModelTest {
     fun delayedKioskStartReady_whenKioskWasDisabled_emitsSetKioskInactiveAndClearsWaiting() =
         runViewModelTest {
             val repository = FakeKioskRepository(kioskEnabled = true)
-            val viewModel = KioskViewModel(repository)
+            val viewModel = createViewModel(
+                repository = repository,
+                elapsedRealtimeMs = 10_000L
+            )
             collectUiState(viewModel)
-            viewModel.setWaitingForSystemInit(true)
+
+            val delayEffect = async { viewModel.sideEffects.first() }
+            viewModel.onHostResumed()
+            advanceUntilIdle()
+            assertEquals(KioskSideEffect.DelayKioskStart(50_000L), delayEffect.await())
+
             repository.kioskEnabledFlow.value = false
             advanceUntilIdle()
 
@@ -168,7 +241,7 @@ class KioskViewModelTest {
 
     @Test
     fun allowedAppChange_whenKioskActive_emitsApplyPolicy() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(
                 kioskEnabled = true,
                 launchableApps = listOf(allowedApp())
@@ -180,12 +253,15 @@ class KioskViewModelTest {
         viewModel.onAllowedAppChange(ALLOWED_PACKAGE, true)
         advanceUntilIdle()
 
-        assertEquals(KioskSideEffect.ApplyPolicy, effect.await())
+        assertEquals(
+            KioskSideEffect.ApplyPolicy(setOf(APP_PACKAGE, ALLOWED_PACKAGE)),
+            effect.await()
+        )
     }
 
     @Test
     fun allowedAppChange_whenKioskInactive_doesNotEmitApplyPolicy() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(
                 kioskEnabled = false,
                 launchableApps = listOf(allowedApp())
@@ -204,7 +280,7 @@ class KioskViewModelTest {
 
     @Test
     fun launchApp_whenAllowedAndLaunchable_emitsLaunchApp() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(
                 allowedPackages = setOf(ALLOWED_PACKAGE),
                 launchableApps = listOf(allowedApp())
@@ -221,7 +297,7 @@ class KioskViewModelTest {
 
     @Test
     fun launchApp_whenNotAllowed_doesNotEmitLaunchApp() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(
                 allowedPackages = emptySet(),
                 launchableApps = listOf(allowedApp())
@@ -240,7 +316,7 @@ class KioskViewModelTest {
 
     @Test
     fun lockTaskPackages_includesAppPackageAndAllowedLaunchablePackagesOnly() = runViewModelTest {
-        val viewModel = KioskViewModel(
+        val viewModel = createViewModel(
             FakeKioskRepository(
                 allowedPackages = setOf(ALLOWED_PACKAGE, STALE_PACKAGE),
                 launchableApps = listOf(allowedApp())
@@ -250,7 +326,7 @@ class KioskViewModelTest {
 
         assertEquals(
             setOf(APP_PACKAGE, ALLOWED_PACKAGE),
-            viewModel.lockTaskPackages(APP_PACKAGE)
+            viewModel.lockTaskPackages()
         )
     }
 
@@ -259,6 +335,17 @@ class KioskViewModelTest {
             viewModel.uiState.collect {}
         }
         advanceUntilIdle()
+    }
+
+    private fun createViewModel(
+        repository: FakeKioskRepository = FakeKioskRepository(),
+        elapsedRealtimeMs: Long = BOOT_GRACE_PERIOD_MS
+    ): KioskViewModel {
+        return KioskViewModel(
+            repository = repository,
+            appPackageName = APP_PACKAGE,
+            elapsedRealtimeClock = FakeElapsedRealtimeClock(elapsedRealtimeMs)
+        )
     }
 
     private fun runViewModelTest(block: suspend TestScope.() -> Unit) {
@@ -300,6 +387,12 @@ class KioskViewModelTest {
         }
     }
 
+    private class FakeElapsedRealtimeClock(
+        private val elapsedRealtimeMs: Long
+    ) : ElapsedRealtimeClock {
+        override fun elapsedRealtimeMs(): Long = elapsedRealtimeMs
+    }
+
     private class TestDrawable : Drawable() {
         override fun draw(canvas: Canvas) = Unit
         override fun setAlpha(alpha: Int) = Unit
@@ -312,5 +405,6 @@ class KioskViewModelTest {
         const val APP_PACKAGE = "com.mascill.kiosync"
         const val ALLOWED_PACKAGE = "com.example.allowed"
         const val STALE_PACKAGE = "com.example.stale"
+        const val BOOT_GRACE_PERIOD_MS = 60_000L
     }
 }
