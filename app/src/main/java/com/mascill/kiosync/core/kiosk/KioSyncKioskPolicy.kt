@@ -18,7 +18,7 @@ object KioSyncKioskPolicy {
         context: Context,
         lockTaskPackages: Set<String> = emptySet()
     ) {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val dpm = context.devicePolicyManager()
         val admin = ComponentName(context, KioSyncDeviceAdminReceiver::class.java)
 
         if (!dpm.isDeviceOwnerApp(context.packageName)) {
@@ -28,49 +28,27 @@ object KioSyncKioskPolicy {
 
         setKioskHomeEnabled(context, true)
 
-        try {
-            val strictLockTaskPackages = getStrictLockTaskPackages(
-                context = context,
-                allowedPackages = lockTaskPackages
-            )
-            dpm.setLockTaskPackages(admin, strictLockTaskPackages)
-            Log.d(TAG, "Strict Lock Task allowlist applied: ${strictLockTaskPackages.joinToString()}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to set Lock Task packages", e)
-        }
-
-        try {
-            val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                addCategory(Intent.CATEGORY_DEFAULT)
-            }
-
-            dpm.addPersistentPreferredActivity(
-                admin,
-                homeFilter,
-                kioskHomeComponent(context)
-            )
-
-            Log.d(TAG, "Persistent HOME activity applied")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to set persistent HOME activity", e)
-        }
-
-        try {
-            dpm.setLockTaskFeatures(
-                admin,
-                DevicePolicyManager.LOCK_TASK_FEATURE_HOME
-            )
-            Log.d(TAG, "Strict Lock Task features applied")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to set Lock Task features", e)
-        }
+        applyLockTaskAllowlist(
+            context = context,
+            dpm = dpm,
+            admin = admin,
+            lockTaskPackages = lockTaskPackages
+        )
+        applyPersistentHomeActivity(
+            context = context,
+            dpm = dpm,
+            admin = admin
+        )
+        applyLockTaskFeatures(
+            dpm = dpm,
+            admin = admin
+        )
 
         Log.d(TAG, "Kiosk policy applied")
     }
 
     fun disable(context: Context) {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val dpm = context.devicePolicyManager()
         val admin = ComponentName(context, KioSyncDeviceAdminReceiver::class.java)
 
         if (!dpm.isDeviceOwnerApp(context.packageName)) {
@@ -78,44 +56,143 @@ object KioSyncKioskPolicy {
             return
         }
 
-        try {
+        clearLockTaskAllowlist(
+            dpm = dpm,
+            admin = admin
+        )
+        clearPersistentHomeActivity(
+            context = context,
+            dpm = dpm,
+            admin = admin
+        )
+
+        setKioskHomeEnabled(context, false)
+
+        enableStatusBar(
+            dpm = dpm,
+            admin = admin
+        )
+        enableKeyguard(
+            dpm = dpm,
+            admin = admin
+        )
+
+        Log.d(TAG, "Kiosk policy disabled")
+    }
+
+    private fun applyLockTaskAllowlist(
+        context: Context,
+        dpm: DevicePolicyManager,
+        admin: ComponentName,
+        lockTaskPackages: Set<String>
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to set Lock Task packages"
+        ) {
+            val strictLockTaskPackages = getStrictLockTaskPackages(
+                context = context,
+                allowedPackages = lockTaskPackages
+            )
+
+            dpm.setLockTaskPackages(admin, strictLockTaskPackages)
+            Log.d(TAG, "Strict Lock Task allowlist applied: ${strictLockTaskPackages.joinToString()}")
+        }
+    }
+
+    private fun applyPersistentHomeActivity(
+        context: Context,
+        dpm: DevicePolicyManager,
+        admin: ComponentName
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to set persistent HOME activity"
+        ) {
+            dpm.addPersistentPreferredActivity(
+                admin,
+                homeIntentFilter(),
+                kioskHomeComponent(context)
+            )
+
+            Log.d(TAG, "Persistent HOME activity applied")
+        }
+    }
+
+    private fun applyLockTaskFeatures(
+        dpm: DevicePolicyManager,
+        admin: ComponentName
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to set Lock Task features"
+        ) {
+            dpm.setLockTaskFeatures(
+                admin,
+                DevicePolicyManager.LOCK_TASK_FEATURE_HOME
+            )
+            Log.d(TAG, "Strict Lock Task features applied")
+        }
+    }
+
+    private fun clearLockTaskAllowlist(
+        dpm: DevicePolicyManager,
+        admin: ComponentName
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to clear Lock Task packages"
+        ) {
             dpm.setLockTaskPackages(admin, emptyArray())
             Log.d(TAG, "Lock Task allowlist cleared")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear Lock Task packages", e)
         }
+    }
 
-        try {
+    private fun clearPersistentHomeActivity(
+        context: Context,
+        dpm: DevicePolicyManager,
+        admin: ComponentName
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to clear persistent preferred activities"
+        ) {
             dpm.clearPackagePersistentPreferredActivities(
                 admin,
                 context.packageName
             )
             Log.d(TAG, "Persistent HOME activity cleared")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear persistent preferred activities", e)
         }
+    }
 
-        setKioskHomeEnabled(context, false)
-
-        try {
+    private fun enableStatusBar(
+        dpm: DevicePolicyManager,
+        admin: ComponentName
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to enable status bar"
+        ) {
             dpm.setStatusBarDisabled(admin, false)
             Log.d(TAG, "Status bar enabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enable status bar", e)
         }
+    }
 
-        try {
+    private fun enableKeyguard(
+        dpm: DevicePolicyManager,
+        admin: ComponentName
+    ) {
+        runPolicyAction(
+            errorMessage = "Failed to enable keyguard"
+        ) {
             dpm.setKeyguardDisabled(admin, false)
             Log.d(TAG, "Keyguard enabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enable keyguard", e)
         }
-
-        Log.d(TAG, "Kiosk policy disabled")
     }
 
     private fun kioskHomeComponent(context: Context): ComponentName {
         return ComponentName(context.packageName, "${context.packageName}.$KIOSK_HOME_ACTIVITY")
+    }
+
+    private fun homeIntentFilter(): IntentFilter {
+        return IntentFilter(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
     }
 
     private fun setKioskHomeEnabled(context: Context, enabled: Boolean) {
@@ -125,15 +202,15 @@ object KioSyncKioskPolicy {
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED
         }
 
-        try {
+        runPolicyAction(
+            errorMessage = "Failed to set Kiosk HOME alias enabled=$enabled"
+        ) {
             context.packageManager.setComponentEnabledSetting(
                 kioskHomeComponent(context),
                 state,
                 PackageManager.DONT_KILL_APP
             )
             Log.d(TAG, "Kiosk HOME alias enabled=$enabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to set Kiosk HOME alias enabled=$enabled", e)
         }
     }
 
@@ -144,5 +221,20 @@ object KioSyncKioskPolicy {
         return (setOf(context.packageName) + allowedPackages)
             .distinct()
             .toTypedArray()
+    }
+
+    private fun Context.devicePolicyManager(): DevicePolicyManager {
+        return getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    }
+
+    private inline fun runPolicyAction(
+        errorMessage: String,
+        action: () -> Unit
+    ) {
+        try {
+            action()
+        } catch (e: Exception) {
+            Log.e(TAG, errorMessage, e)
+        }
     }
 }
