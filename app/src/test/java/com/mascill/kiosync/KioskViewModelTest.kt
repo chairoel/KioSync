@@ -123,6 +123,50 @@ class KioskViewModelTest {
     }
 
     @Test
+    fun hostResumed_whenKioskActive_emitsStartKiosk() = runViewModelTest {
+        val viewModel = KioskViewModel(
+            FakeKioskRepository(kioskEnabled = true)
+        )
+
+        val effect = async { viewModel.sideEffects.first() }
+        viewModel.onHostResumed()
+        advanceUntilIdle()
+
+        assertEquals(KioskSideEffect.StartKiosk, effect.await())
+    }
+
+    @Test
+    fun hostResumed_whenKioskInactive_emitsSetKioskInactive() = runViewModelTest {
+        val viewModel = KioskViewModel(
+            FakeKioskRepository(kioskEnabled = false)
+        )
+
+        val effect = async { viewModel.sideEffects.first() }
+        viewModel.onHostResumed()
+        advanceUntilIdle()
+
+        assertEquals(KioskSideEffect.SetKioskInactive, effect.await())
+    }
+
+    @Test
+    fun delayedKioskStartReady_whenKioskWasDisabled_emitsSetKioskInactiveAndClearsWaiting() =
+        runViewModelTest {
+            val repository = FakeKioskRepository(kioskEnabled = true)
+            val viewModel = KioskViewModel(repository)
+            collectUiState(viewModel)
+            viewModel.setWaitingForSystemInit(true)
+            repository.kioskEnabledFlow.value = false
+            advanceUntilIdle()
+
+            val effect = async { viewModel.sideEffects.first() }
+            viewModel.onDelayedKioskStartReady()
+            advanceUntilIdle()
+
+            assertEquals(KioskSideEffect.SetKioskInactive, effect.await())
+            assertFalse(viewModel.uiState.value.waitingForSystemInit)
+        }
+
+    @Test
     fun allowedAppChange_whenKioskActive_emitsApplyPolicy() = runViewModelTest {
         val viewModel = KioskViewModel(
             FakeKioskRepository(

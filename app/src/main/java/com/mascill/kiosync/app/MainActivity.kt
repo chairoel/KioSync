@@ -6,24 +6,12 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.compose.runtime.getValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mascill.kiosync.core.designsystem.KioSyncTheme
 import com.mascill.kiosync.core.kiosk.KioskController
 import com.mascill.kiosync.core.kiosk.KioskStartScheduler
 import com.mascill.kiosync.core.navigation.AppLauncher
 import com.mascill.kiosync.core.system.SystemBarsController
-import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
-import com.mascill.kiosync.feature.kiosk.screen.KioskScreen
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModel
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModelFactory
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -56,81 +44,26 @@ class MainActivity : ComponentActivity() {
         systemBarsController.show()
         logDeviceOwnerStatus()
 
-        renderContent()
-        collectSideEffects()
-        collectKioskEnabled()
+        setContent {
+            KioSyncAppScreen(
+                viewModel = viewModel,
+                onStartKiosk = ::startKioskWhenReady,
+                onStopKiosk = ::disableKioskMode,
+                onSetKioskInactive = ::setKioskInactive,
+                onApplyPolicy = ::applyCurrentPolicy,
+                onLaunchApp = ::launchApp
+            )
+        }
     }
 
     override fun onResume() {
         super.onResume()
-
-        if (viewModel.uiState.value.kioskEnabled) {
-            startAutomaticKioskWhenReady()
-        } else {
-            kioskStartScheduler.cancel()
-            systemBarsController.show()
-            Log.d(TAG, "Kiosk disabled, skip startLockTask")
-        }
+        viewModel.onHostResumed()
     }
 
     override fun onDestroy() {
         kioskStartScheduler.cancel()
         super.onDestroy()
-    }
-
-    private fun renderContent() {
-        setContent {
-            KioSyncTheme {
-                val state by viewModel.uiState.collectAsStateWithLifecycle()
-
-                KioskScreen(
-                    state = state,
-                    onStatusTap = viewModel::onStatusTap,
-                    onLaunchApp = viewModel::onLaunchApp,
-                    onPinChange = viewModel::onPinChange,
-                    onConfirmPin = viewModel::confirmPin,
-                    onDismissPin = viewModel::closePinDialog,
-                    onKioskEnabledChange = viewModel::onKioskEnabledChange,
-                    onAllowedAppChange = viewModel::onAllowedAppChange,
-                    onRefreshApps = viewModel::refreshApps,
-                    onDismissAdminPanel = viewModel::closeAdminPanel
-                )
-            }
-        }
-    }
-
-    private fun collectSideEffects() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.sideEffects.collect { sideEffect ->
-                    when (sideEffect) {
-                        KioskSideEffect.StartKiosk -> startKioskNow()
-                        KioskSideEffect.StopKiosk -> disableKioskMode()
-                        KioskSideEffect.ApplyPolicy -> applyCurrentPolicy()
-                        is KioskSideEffect.LaunchApp -> launchApp(sideEffect.packageName)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun collectKioskEnabled() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState
-                    .map { it.kioskEnabled }
-                    .distinctUntilChanged()
-                    .collect { kioskEnabled ->
-                        if (kioskEnabled) {
-                            startAutomaticKioskWhenReady()
-                        } else {
-                            kioskStartScheduler.cancel()
-                            viewModel.setWaitingForSystemInit(false)
-                            systemBarsController.show()
-                        }
-                    }
-            }
-        }
     }
 
     private fun disableKioskMode() {
@@ -147,7 +80,13 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun startAutomaticKioskWhenReady() {
+    private fun setKioskInactive() {
+        kioskStartScheduler.cancel()
+        systemBarsController.show()
+        Log.d(TAG, "Kiosk disabled, skip startLockTask")
+    }
+
+    private fun startKioskWhenReady() {
         val remainingGracePeriod = remainingBootKioskGracePeriodMs()
         if (remainingGracePeriod > 0L) {
             viewModel.setWaitingForSystemInit(true)
@@ -163,14 +102,7 @@ class MainActivity : ComponentActivity() {
 
     private fun scheduleDelayedKioskStart(delayMs: Long) {
         kioskStartScheduler.schedule(delayMs) {
-            viewModel.setWaitingForSystemInit(false)
-
-            if (viewModel.uiState.value.kioskEnabled) {
-                startKioskNow()
-            } else {
-                systemBarsController.show()
-                Log.d(TAG, "Kiosk disabled before delayed start")
-            }
+            viewModel.onDelayedKioskStartReady()
         }
     }
 

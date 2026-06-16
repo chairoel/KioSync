@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -56,9 +57,24 @@ class KioskViewModel(
         waitingForSystemInit.value = waiting
     }
 
+    fun onHostResumed() {
+        viewModelScope.launch {
+            emitCurrentKioskStateEffect()
+        }
+    }
+
+    fun onDelayedKioskStartReady() {
+        viewModelScope.launch {
+            waitingForSystemInit.value = false
+            emitCurrentKioskStateEffect()
+        }
+    }
+
     fun onKioskEnabledChange(enabled: Boolean) {
         viewModelScope.launch {
             repository.setKioskEnabled(enabled)
+            waitingForSystemInit.value = false
+
             _sideEffects.emit(
                 if (enabled) {
                     KioskSideEffect.StartKiosk
@@ -147,6 +163,19 @@ class KioskViewModel(
 
         return uiState.value.allowedPackages
             .filterTo(mutableSetOf()) { it in launchablePackageNames }
+    }
+
+    private suspend fun emitCurrentKioskStateEffect() {
+        val kioskEnabled = repository.kioskEnabled.first()
+
+        _sideEffects.emit(
+            if (kioskEnabled) {
+                KioskSideEffect.StartKiosk
+            } else {
+                waitingForSystemInit.value = false
+                KioskSideEffect.SetKioskInactive
+            }
+        )
     }
 
     private companion object {
