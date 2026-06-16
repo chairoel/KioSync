@@ -7,22 +7,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.util.Log
+import com.mascill.kiosync.KioSyncAppAllowlist
 
 object KioSyncKioskPolicy {
 
     private const val TAG = "KioSyncDPC"
     private const val KIOSK_HOME_ACTIVITY = "KioskHomeActivity"
-
-    private val RELAXED_SYSTEM_PACKAGES = arrayOf(
-        "android",
-        "com.android.bluetooth",
-        "com.google.android.bluetooth",
-        "com.android.permissioncontroller",
-        "com.google.android.permissioncontroller",
-        "com.android.settings",
-        "com.android.systemui",
-        "com.google.android.gms"
-    )
 
     fun apply(context: Context) {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -36,9 +26,9 @@ object KioSyncKioskPolicy {
         setKioskHomeEnabled(context, true)
 
         try {
-            val lockTaskPackages = getRelaxedLockTaskPackages(context)
+            val lockTaskPackages = getStrictLockTaskPackages(context)
             dpm.setLockTaskPackages(admin, lockTaskPackages)
-            Log.d(TAG, "Relaxed Lock Task allowlist applied: ${lockTaskPackages.joinToString()}")
+            Log.d(TAG, "Strict Lock Task allowlist applied: ${lockTaskPackages.joinToString()}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set Lock Task packages", e)
         }
@@ -63,14 +53,9 @@ object KioSyncKioskPolicy {
         try {
             dpm.setLockTaskFeatures(
                 admin,
-                DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW
+                DevicePolicyManager.LOCK_TASK_FEATURE_HOME
             )
-            Log.d(TAG, "Relaxed Lock Task features applied")
+            Log.d(TAG, "Strict Lock Task features applied")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set Lock Task features", e)
         }
@@ -146,23 +131,9 @@ object KioSyncKioskPolicy {
         }
     }
 
-    private fun getRelaxedLockTaskPackages(context: Context): Array<String> {
-        val packageManager = context.packageManager
-
-        return (arrayOf(context.packageName) + RELAXED_SYSTEM_PACKAGES)
+    private fun getStrictLockTaskPackages(context: Context): Array<String> {
+        return (listOf(context.packageName) + KioSyncAppAllowlist.getAllowedLaunchablePackages(context))
             .distinct()
-            .filter { packageName ->
-                packageName == "android" || packageManager.isPackageInstalled(packageName)
-            }
             .toTypedArray()
-    }
-
-    private fun PackageManager.isPackageInstalled(packageName: String): Boolean {
-        return try {
-            getPackageInfo(packageName, 0)
-            true
-        } catch (e: PackageManager.NameNotFoundException) {
-            false
-        }
     }
 }
