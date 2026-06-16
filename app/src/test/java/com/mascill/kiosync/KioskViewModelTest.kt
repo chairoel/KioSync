@@ -8,6 +8,7 @@ import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.model.LaunchableApp
 import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
+import com.mascill.kiosync.feature.kiosk.viewmodel.KioskStartPlanner
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -344,7 +345,9 @@ class KioskViewModelTest {
         return KioskViewModel(
             repository = repository,
             appPackageName = APP_PACKAGE,
-            elapsedRealtimeClock = FakeElapsedRealtimeClock(elapsedRealtimeMs)
+            kioskStartPlanner = KioskStartPlanner(
+                elapsedRealtimeClock = FakeElapsedRealtimeClock(elapsedRealtimeMs)
+            )
         )
     }
 

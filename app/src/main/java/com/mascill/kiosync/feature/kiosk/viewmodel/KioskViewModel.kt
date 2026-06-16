@@ -3,8 +3,6 @@ package com.mascill.kiosync.feature.kiosk.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mascill.kiosync.core.data.repository.KioskRepository
-import com.mascill.kiosync.core.model.LaunchableApp
-import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.feature.kiosk.model.KioskDialogState
 import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
 import com.mascill.kiosync.feature.kiosk.model.KioskUiState
@@ -21,7 +19,7 @@ import kotlinx.coroutines.launch
 class KioskViewModel(
     private val repository: KioskRepository,
     private val appPackageName: String,
-    private val elapsedRealtimeClock: ElapsedRealtimeClock
+    private val kioskStartPlanner: KioskStartPlanner
 ) : ViewModel() {
 
     private val waitingForSystemInit = MutableStateFlow(false)
@@ -199,24 +197,13 @@ class KioskViewModel(
     }
 
     private fun kioskStartSideEffect(): KioskSideEffect {
-        val remainingGracePeriodMs = remainingBootKioskGracePeriodMs()
-        return if (remainingGracePeriodMs > 0L) {
-            waitingForSystemInit.value = true
-            KioskSideEffect.DelayKioskStart(remainingGracePeriodMs)
-        } else {
-            waitingForSystemInit.value = false
-            KioskSideEffect.StartKiosk(lockTaskPackages())
-        }
-    }
-
-    private fun remainingBootKioskGracePeriodMs(): Long {
-        return (BOOT_KIOSK_GRACE_PERIOD_MS - elapsedRealtimeClock.elapsedRealtimeMs())
-            .coerceAtLeast(0L)
+        val plan = kioskStartPlanner.planStart(lockTaskPackages())
+        waitingForSystemInit.value = plan.waitingForSystemInit
+        return plan.sideEffect
     }
 
     private companion object {
         const val STATUS_TAP_TO_OPEN_ADMIN = 7
-        const val BOOT_KIOSK_GRACE_PERIOD_MS = 60_000L
 
         // Untuk development dulu. Untuk production jangan hardcode PIN seperti ini.
         const val ADMIN_PIN = "123456"

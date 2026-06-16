@@ -6,6 +6,7 @@ import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.data.repository.KioskRepositoryImpl
 import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.core.system.SystemElapsedRealtimeClock
+import com.mascill.kiosync.feature.kiosk.viewmodel.KioskStartPlanner
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModelFactory
 
 object Injection {
@@ -25,7 +26,7 @@ object Injection {
             kioskViewModelFactory ?: KioskViewModelFactory(
                 kioskRepository = provideKioskRepository(appContext),
                 appPackageName = provideAppPackageName(appContext),
-                elapsedRealtimeClock = provideElapsedRealtimeClock()
+                kioskStartPlanner = provideKioskStartPlanner()
             )
                 .also { kioskViewModelFactory = it }
         }
@@ -48,6 +49,12 @@ object Injection {
 
     fun provideElapsedRealtimeClock(): ElapsedRealtimeClock {
         return SystemElapsedRealtimeClock
+    }
+
+    fun provideKioskStartPlanner(): KioskStartPlanner {
+        return KioskStartPlanner(
+            elapsedRealtimeClock = provideElapsedRealtimeClock()
+        )
     }
 
     private fun provideKioskPreferencesDataSource(context: Context): KioskPreferencesDataSource {
