@@ -33,6 +33,9 @@ private val LightColorScheme = lightColorScheme(
     */
 )
 
+/**
+ * App theme wrapper for all KioSync Compose screens.
+ */
 @Composable
 fun KioSyncTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

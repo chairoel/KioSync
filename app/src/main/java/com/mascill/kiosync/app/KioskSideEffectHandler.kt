@@ -10,6 +10,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Collects ViewModel side effects and forwards them to host-owned Android operations.
+ */
 @Composable
 fun KioskSideEffectHandler(
     sideEffects: Flow<KioskSideEffect>,
@@ -28,6 +31,7 @@ fun KioskSideEffectHandler(
     val currentOnApplyPolicy by rememberUpdatedState(onApplyPolicy)
     val currentOnLaunchApp by rememberUpdatedState(onLaunchApp)
 
+    // Keep callback references fresh while collecting only when the lifecycle is visible enough.
     LaunchedEffect(sideEffects, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             sideEffects.collect { sideEffect ->

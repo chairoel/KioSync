@@ -6,6 +6,9 @@ import com.mascill.kiosync.feature.kiosk.components.AdminPinDialog
 import com.mascill.kiosync.feature.kiosk.components.KioSyncHomeContent
 import com.mascill.kiosync.feature.kiosk.model.KioskUiState
 
+/**
+ * Kiosk feature screen that decides which dialogs sit on top of the home content.
+ */
 @Composable
 fun KioskScreen(
     state: KioskUiState,

@@ -5,10 +5,14 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.util.Log
 
+/**
+ * Activity-scoped bridge for starting and stopping Android Lock Task mode.
+ */
 class KioskController(
     private val activity: Activity
 ) {
 
+    /** Applies Device Owner kiosk policy for the current allowlist. */
     fun applyPolicy(lockTaskPackages: Set<String>) {
         KioSyncKioskPolicy.apply(
             context = activity,
@@ -16,10 +20,14 @@ class KioskController(
         )
     }
 
+    /** Removes Device Owner kiosk policy. */
     fun disablePolicy() {
         KioSyncKioskPolicy.disable(activity)
     }
 
+    /**
+     * Starts Lock Task only after DevicePolicyManager confirms this package is allowlisted.
+     */
     fun startLockTaskIfAllowed() {
         val dpm = activity.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
@@ -35,6 +43,7 @@ class KioskController(
         }
     }
 
+    /** Stops Lock Task mode if the activity is currently pinned by kiosk mode. */
     fun stopLockTask() {
         try {
             activity.stopLockTask()
@@ -44,6 +53,7 @@ class KioskController(
         }
     }
 
+    /** Logs Device Owner and Lock Task status for provisioning/debugging sessions. */
     fun logDeviceOwnerStatus(isKioskEnabled: Boolean) {
         val dpm = activity.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 

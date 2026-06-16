@@ -4,12 +4,18 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 
+/**
+ * Starts external apps and navigates back to HOME from an application context.
+ */
 class AppLauncher(
     context: Context
 ) {
 
     private val appContext = context.applicationContext
 
+    /**
+     * Launches a package if Android can resolve a launcher intent for it.
+     */
     fun launchApp(
         packageName: String,
         onLaunchIntentMissing: () -> Unit
@@ -30,6 +36,9 @@ class AppLauncher(
         }
     }
 
+    /**
+     * Sends the user to the current HOME activity after kiosk mode has been disabled.
+     */
     fun exitToHome(onExitedToHome: () -> Unit) {
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)

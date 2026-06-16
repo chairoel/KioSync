@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/**
+ * Coordinates kiosk UI state, persisted settings, and one-time Android side effects.
+ */
 class KioskViewModel(
     private val repository: KioskRepository,
     private val appPackageName: String,
@@ -27,8 +30,10 @@ class KioskViewModel(
     private val dialogState = MutableStateFlow(KioskDialogState())
     private val sideEffectChannel = Channel<KioskSideEffect>(Channel.BUFFERED)
 
+    /** One-time commands collected by the host activity/composable. */
     val sideEffects = sideEffectChannel.receiveAsFlow()
 
+    /** Combined screen state consumed by Compose. */
     val uiState: StateFlow<KioskUiState> = combine(
         waitingForSystemInit,
         repository.kioskEnabled,
@@ -54,12 +59,14 @@ class KioskViewModel(
 
     private var statusTapCount = 0
 
+    /** Refreshes kiosk side effects when the host activity returns to the foreground. */
     fun onHostResumed() {
         viewModelScope.launch {
             emitCurrentKioskStateEffect()
         }
     }
 
+    /** Continues kiosk startup after the boot grace-period delay finishes. */
     fun onDelayedKioskStartReady() {
         viewModelScope.launch {
             waitingForSystemInit.value = false
@@ -72,6 +79,7 @@ class KioskViewModel(
         }
     }
 
+    /** Persists the admin kiosk toggle and emits the matching host command. */
     fun onKioskEnabledChange(enabled: Boolean) {
         viewModelScope.launch {
             repository.setKioskEnabled(enabled)
@@ -87,6 +95,7 @@ class KioskViewModel(
         }
     }
 
+    /** Opens the hidden admin PIN prompt after repeated status taps. */
     fun onStatusTap() {
         statusTapCount++
 
@@ -96,6 +105,7 @@ class KioskViewModel(
         }
     }
 
+    /** Accepts only numeric input and limits it to the configured PIN length. */
     fun onPinChange(value: String) {
         dialogState.value = dialogState.value.copy(
             pin = value
@@ -105,6 +115,7 @@ class KioskViewModel(
         )
     }
 
+    /** Validates the admin PIN and opens the settings panel on success. */
     fun confirmPin() {
         if (dialogState.value.pin == ADMIN_PIN) {
             closePinDialog()
@@ -115,6 +126,7 @@ class KioskViewModel(
         }
     }
 
+    /** Clears PIN input and hides the PIN dialog. */
     fun closePinDialog() {
         dialogState.value = dialogState.value.copy(
             showPinDialog = false,
@@ -123,14 +135,17 @@ class KioskViewModel(
         )
     }
 
+    /** Hides the admin settings panel. */
     fun closeAdminPanel() {
         dialogState.value = dialogState.value.copy(showAdminPanel = false)
     }
 
+    /** Reloads installed launcher apps from PackageManager. */
     fun refreshApps() {
         launchableApps.value = repository.getLaunchableApps()
     }
 
+    /** Updates the app allowlist and reapplies policy when kiosk mode is already active. */
     fun onAllowedAppChange(packageName: String, allowed: Boolean) {
         viewModelScope.launch {
             val nextAllowedPackages = if (allowed) {
@@ -147,6 +162,7 @@ class KioskViewModel(
         }
     }
 
+    /** Emits a launch command only for packages currently allowed and still installed. */
     fun onLaunchApp(packageName: String) {
         viewModelScope.launch {
             if (packageName in allowedLaunchablePackages()) {
@@ -155,20 +171,26 @@ class KioskViewModel(
         }
     }
 
+    /** Reapplies policy when an allowed package can no longer provide a launch intent. */
     fun onLaunchIntentMissing() {
         viewModelScope.launch {
             sendSideEffect(KioskSideEffect.ApplyPolicy(lockTaskPackages()))
         }
     }
 
+    /** Returns the complete Lock Task allowlist, including KioSync itself. */
     fun lockTaskPackages(): Set<String> {
         return lockTaskPackages(uiState.value.allowedPackages)
     }
 
+    /** Combines KioSync with allowed packages that are still launchable. */
     private fun lockTaskPackages(allowedPackages: Set<String>): Set<String> {
         return setOf(appPackageName) + allowedLaunchablePackages(allowedPackages)
     }
 
+    /**
+     * Filters persisted package names against the live launcher list to avoid stale allowlist data.
+     */
     private fun allowedLaunchablePackages(
         allowedPackages: Set<String> = uiState.value.allowedPackages
     ): Set<String> {
@@ -179,6 +201,7 @@ class KioskViewModel(
             .filterTo(mutableSetOf()) { it in launchablePackageNames }
     }
 
+    /** Emits the correct side effect for the current persisted kiosk setting. */
     private suspend fun emitCurrentKioskStateEffect() {
         val kioskEnabled = repository.kioskEnabled.first()
 
@@ -192,10 +215,12 @@ class KioskViewModel(
         )
     }
 
+    /** Sends one-time work to the host without storing it in persistent UI state. */
     private suspend fun sendSideEffect(sideEffect: KioskSideEffect) {
         sideEffectChannel.send(sideEffect)
     }
 
+    /** Creates the correct startup side effect and mirrors its waiting state into the UI. */
     private fun kioskStartSideEffect(): KioskSideEffect {
         val plan = kioskStartPlanner.planStart(lockTaskPackages())
         waitingForSystemInit.value = plan.waitingForSystemInit
@@ -205,7 +230,7 @@ class KioskViewModel(
     private companion object {
         const val STATUS_TAP_TO_OPEN_ADMIN = 7
 
-        // Untuk development dulu. Untuk production jangan hardcode PIN seperti ini.
+        // Development-only PIN. Production builds should not hardcode admin credentials.
         const val ADMIN_PIN = "123456"
     }
 }

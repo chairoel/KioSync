@@ -26,10 +26,17 @@ private val Context.kioskDataStore: DataStore<Preferences> by preferencesDataSto
     }
 )
 
+/**
+ * Persists kiosk settings in Jetpack DataStore.
+ *
+ * SharedPreferencesMigration keeps older installations compatible if they previously used the same
+ * preference file name.
+ */
 class KioskPreferencesDataSource(context: Context) {
 
     private val dataStore = context.applicationContext.kioskDataStore
 
+    /** Emits whether kiosk mode should be active. Defaults to false when data is missing. */
     val kioskEnabled: Flow<Boolean> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -42,6 +49,7 @@ class KioskPreferencesDataSource(context: Context) {
             preferences[KEY_KIOSK_ENABLED] ?: false
         }
 
+    /** Emits package names selected by the admin as launchable inside kiosk mode. */
     val allowedPackages: Flow<Set<String>> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
@@ -54,12 +62,14 @@ class KioskPreferencesDataSource(context: Context) {
             preferences[KEY_ALLOWED_APP_PACKAGES].orEmpty()
         }
 
+    /** Saves the desired kiosk enabled state. */
     suspend fun setKioskEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[KEY_KIOSK_ENABLED] = enabled
         }
     }
 
+    /** Saves the complete allowlist of package names. */
     suspend fun setAllowedPackages(packageNames: Set<String>) {
         dataStore.edit { preferences ->
             preferences[KEY_ALLOWED_APP_PACKAGES] = packageNames

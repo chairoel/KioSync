@@ -7,6 +7,9 @@ import com.mascill.kiosync.core.designsystem.KioSyncTheme
 import com.mascill.kiosync.feature.kiosk.screen.KioskScreen
 import com.mascill.kiosync.feature.kiosk.viewmodel.KioskViewModel
 
+/**
+ * Root Compose entry point that connects ViewModel state/events to the kiosk screen.
+ */
 @Composable
 fun KioSyncAppScreen(
     viewModel: KioskViewModel,
@@ -17,6 +20,7 @@ fun KioSyncAppScreen(
     onApplyPolicy: (Set<String>) -> Unit,
     onLaunchApp: (String) -> Unit
 ) {
+    // Host callbacks stay outside the ViewModel because they depend on Activity/System APIs.
     KioskSideEffectHandler(
         sideEffects = viewModel.sideEffects,
         onStartKiosk = onStartKiosk,

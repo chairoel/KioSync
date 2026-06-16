@@ -3,11 +3,17 @@ package com.mascill.kiosync.feature.kiosk.viewmodel
 import com.mascill.kiosync.core.system.ElapsedRealtimeClock
 import com.mascill.kiosync.feature.kiosk.model.KioskSideEffect
 
+/**
+ * Decides whether kiosk mode can start immediately or should wait after boot.
+ */
 class KioskStartPlanner(
     private val elapsedRealtimeClock: ElapsedRealtimeClock,
     private val bootKioskGracePeriodMs: Long = BOOT_KIOSK_GRACE_PERIOD_MS
 ) {
 
+    /**
+     * Builds the next kiosk-start side effect based on the remaining boot grace period.
+     */
     fun planStart(lockTaskPackages: Set<String>): KioskStartPlan {
         val remainingGracePeriodMs = remainingBootKioskGracePeriodMs()
 
@@ -24,6 +30,7 @@ class KioskStartPlanner(
         }
     }
 
+    /** Returns the remaining startup delay needed before Lock Task mode should be requested. */
     private fun remainingBootKioskGracePeriodMs(): Long {
         return (bootKioskGracePeriodMs - elapsedRealtimeClock.elapsedRealtimeMs())
             .coerceAtLeast(0L)
@@ -34,7 +41,12 @@ class KioskStartPlanner(
     }
 }
 
+/**
+ * Result of kiosk startup planning.
+ */
 data class KioskStartPlan(
+    /** True when UI should show the initialization state while a delayed start is pending. */
     val waitingForSystemInit: Boolean,
+    /** Side effect the host should execute next. */
     val sideEffect: KioskSideEffect
 )

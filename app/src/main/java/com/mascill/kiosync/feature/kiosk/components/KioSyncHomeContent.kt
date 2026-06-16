@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.mascill.kiosync.core.model.LaunchableApp
 
+/**
+ * Main kiosk home content with status text and the allowed app launcher.
+ */
 @Composable
 fun KioSyncHomeContent(
     waitingForSystemInit: Boolean,
@@ -21,6 +24,7 @@ fun KioSyncHomeContent(
     onStatusTap: () -> Unit,
     onLaunchApp: (String) -> Unit
 ) {
+    // The status label is also the hidden entry point for admin mode.
     Column(
         modifier = Modifier
             .fillMaxSize()

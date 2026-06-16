@@ -23,6 +23,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mascill.kiosync.core.model.LaunchableApp
 
+/**
+ * Admin settings dialog for toggling kiosk mode and editing the app allowlist.
+ */
 @Composable
 fun AdminPanelDialog(
     kioskEnabled: Boolean,

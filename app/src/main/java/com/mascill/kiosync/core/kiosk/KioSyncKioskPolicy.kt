@@ -9,11 +9,20 @@ import android.content.pm.PackageManager
 import android.util.Log
 import com.mascill.kiosync.core.dpc.KioSyncDeviceAdminReceiver
 
+/**
+ * Applies and removes Device Owner policies needed for KioSync kiosk mode.
+ *
+ * All calls are defensive because DevicePolicyManager APIs throw when the app is not the device
+ * owner or when the device is in an unexpected provisioning state.
+ */
 object KioSyncKioskPolicy {
 
     private const val TAG = "KioSyncDPC"
     private const val KIOSK_HOME_ACTIVITY = "KioskHomeActivity"
 
+    /**
+     * Applies all Device Owner policy required before Lock Task mode can start.
+     */
     fun apply(
         context: Context,
         lockTaskPackages: Set<String> = emptySet()
@@ -47,6 +56,9 @@ object KioSyncKioskPolicy {
         Log.d(TAG, "Kiosk policy applied")
     }
 
+    /**
+     * Removes kiosk policy and restores system surfaces that were controlled by Device Owner APIs.
+     */
     fun disable(context: Context) {
         val dpm = context.devicePolicyManager()
         val admin = ComponentName(context, KioSyncDeviceAdminReceiver::class.java)
@@ -80,6 +92,9 @@ object KioSyncKioskPolicy {
         Log.d(TAG, "Kiosk policy disabled")
     }
 
+    /**
+     * Sets the exact packages allowed to run while Lock Task mode is active.
+     */
     private fun applyLockTaskAllowlist(
         context: Context,
         dpm: DevicePolicyManager,
@@ -99,6 +114,9 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /**
+     * Makes the kiosk home activity handle HOME so users return to KioSync instead of a launcher.
+     */
     private fun applyPersistentHomeActivity(
         context: Context,
         dpm: DevicePolicyManager,
@@ -117,6 +135,9 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /**
+     * Restricts Lock Task system affordances to the minimum needed for a home-style kiosk shell.
+     */
     private fun applyLockTaskFeatures(
         dpm: DevicePolicyManager,
         admin: ComponentName
@@ -132,6 +153,7 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /** Clears the Lock Task allowlist when kiosk mode is disabled. */
     private fun clearLockTaskAllowlist(
         dpm: DevicePolicyManager,
         admin: ComponentName
@@ -144,6 +166,7 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /** Removes the persistent HOME handler so Android can return to the normal launcher. */
     private fun clearPersistentHomeActivity(
         context: Context,
         dpm: DevicePolicyManager,
@@ -160,6 +183,7 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /** Re-enables the status bar after leaving kiosk mode. */
     private fun enableStatusBar(
         dpm: DevicePolicyManager,
         admin: ComponentName
@@ -172,6 +196,7 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /** Re-enables the keyguard after leaving kiosk mode. */
     private fun enableKeyguard(
         dpm: DevicePolicyManager,
         admin: ComponentName
@@ -184,10 +209,12 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /** ComponentName for the manifest alias that acts as kiosk HOME. */
     private fun kioskHomeComponent(context: Context): ComponentName {
         return ComponentName(context.packageName, "${context.packageName}.$KIOSK_HOME_ACTIVITY")
     }
 
+    /** Intent filter that matches Android's HOME resolution flow. */
     private fun homeIntentFilter(): IntentFilter {
         return IntentFilter(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
@@ -195,6 +222,9 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /**
+     * Enables or disables the kiosk HOME alias without killing the running process.
+     */
     private fun setKioskHomeEnabled(context: Context, enabled: Boolean) {
         val state = if (enabled) {
             PackageManager.COMPONENT_ENABLED_STATE_ENABLED
@@ -214,6 +244,9 @@ object KioSyncKioskPolicy {
         }
     }
 
+    /**
+     * Always includes KioSync itself so it can remain active while other packages are allowlisted.
+     */
     private fun getStrictLockTaskPackages(
         context: Context,
         allowedPackages: Set<String>
@@ -227,6 +260,9 @@ object KioSyncKioskPolicy {
         return getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     }
 
+    /**
+     * Keeps policy application resilient to partial failures and logs enough context for debugging.
+     */
     private inline fun runPolicyAction(
         errorMessage: String,
         action: () -> Unit

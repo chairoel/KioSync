@@ -20,6 +20,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mascill.kiosync.core.model.LaunchableApp
 
+/**
+ * Grid launcher that shows only apps selected by the admin allowlist.
+ */
 @Composable
 fun KioSyncLauncher(
     allowedApps: List<LaunchableApp>,

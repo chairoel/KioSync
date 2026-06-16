@@ -15,6 +15,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
+/**
+ * PIN gate shown before the admin settings panel.
+ */
 @Composable
 fun AdminPinDialog(
     pin: String,
