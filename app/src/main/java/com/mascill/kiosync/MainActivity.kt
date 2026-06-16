@@ -1,6 +1,7 @@
 package com.mascill.kiosync
 
 import android.app.admin.DevicePolicyManager
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -246,6 +247,8 @@ class MainActivity : ComponentActivity() {
         showSystemBars()
 
         checkDeviceOwnerStatus()
+
+        exitToHome()
     }
 
     private fun isKioskEnabled(): Boolean {
@@ -300,5 +303,20 @@ class MainActivity : ComponentActivity() {
             WindowCompat.getInsetsController(window, window.decorView)
 
         windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun exitToHome() {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+
+        try {
+            startActivity(homeIntent)
+            finishAndRemoveTask()
+            Log.d(TAG, "Exited to HOME after kiosk disabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to exit to HOME after kiosk disabled", e)
+        }
     }
 }

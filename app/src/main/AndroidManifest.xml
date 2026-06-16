@@ -23,14 +23,22 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-
-                <!-- Untuk development, jangan aktifkan HOME dulu -->
-                <!--
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-                -->
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name=".KioskHomeActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
 
         <receiver
             android:name=".dpc.KioSyncDeviceAdminReceiver"
