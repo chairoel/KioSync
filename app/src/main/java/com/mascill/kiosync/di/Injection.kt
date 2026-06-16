@@ -1,6 +1,7 @@
 package com.mascill.kiosync.di
 
 import android.content.Context
+import com.mascill.kiosync.core.data.datasource.LaunchableAppDataSource
 import com.mascill.kiosync.core.data.datastore.KioskPreferencesDataSource
 import com.mascill.kiosync.core.data.repository.KioskRepository
 import com.mascill.kiosync.core.data.repository.KioskRepositoryImpl
@@ -13,6 +14,9 @@ object Injection {
 
     @Volatile
     private var preferencesDataSource: KioskPreferencesDataSource? = null
+
+    @Volatile
+    private var launchableAppDataSource: LaunchableAppDataSource? = null
 
     @Volatile
     private var repository: KioskRepository? = null
@@ -36,8 +40,8 @@ object Injection {
         return repository ?: synchronized(this) {
             val appContext = context.applicationContext
             repository ?: KioskRepositoryImpl(
-                context = appContext,
-                preferencesDataSource = provideKioskPreferencesDataSource(appContext)
+                preferencesDataSource = provideKioskPreferencesDataSource(appContext),
+                launchableAppDataSource = provideLaunchableAppDataSource(appContext)
             )
                 .also { repository = it }
         }
@@ -61,6 +65,13 @@ object Injection {
         return preferencesDataSource ?: synchronized(this) {
             preferencesDataSource ?: KioskPreferencesDataSource(context.applicationContext)
                 .also { preferencesDataSource = it }
+        }
+    }
+
+    private fun provideLaunchableAppDataSource(context: Context): LaunchableAppDataSource {
+        return launchableAppDataSource ?: synchronized(this) {
+            launchableAppDataSource ?: LaunchableAppDataSource(context.applicationContext)
+                .also { launchableAppDataSource = it }
         }
     }
 }
