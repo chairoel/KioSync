@@ -1,4 +1,4 @@
-package com.mascill.kiosync.dpc
+package com.mascill.kiosync.utils.dpc
 
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context

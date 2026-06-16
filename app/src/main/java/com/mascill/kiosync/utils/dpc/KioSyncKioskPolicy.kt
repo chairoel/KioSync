@@ -1,4 +1,4 @@
-package com.mascill.kiosync.dpc
+package com.mascill.kiosync.utils.dpc
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.util.Log
-import com.mascill.kiosync.KioSyncAppAllowlist
+import com.mascill.kiosync.di.KioSyncDependencies
 
 object KioSyncKioskPolicy {
 
@@ -132,7 +132,7 @@ object KioSyncKioskPolicy {
     }
 
     private fun getStrictLockTaskPackages(context: Context): Array<String> {
-        return (listOf(context.packageName) + KioSyncAppAllowlist.getAllowedLaunchablePackages(context))
+        return (listOf(context.packageName) + KioSyncDependencies.repository(context).getAllowedLaunchablePackages())
             .distinct()
             .toTypedArray()
     }

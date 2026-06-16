@@ -1,46 +1,49 @@
-package com.mascill.kiosync
+package com.mascill.kiosync.data.repository
 
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
-import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.core.content.edit
+import com.mascill.kiosync.data.model.LaunchableApp
 
-object KioSyncAppAllowlist {
+class KioSyncRepositoryImpl(context: Context) : KioSyncRepository {
 
-    private const val PREF_NAME = "kiosync_settings"
-    private const val KEY_ALLOWED_APP_PACKAGES = "allowed_app_packages"
+    private val appContext = context.applicationContext
 
-    data class LaunchableApp(
-        val label: String,
-        val packageName: String,
-        val icon: Drawable
-    )
+    override fun isKioskEnabled(): Boolean {
+        return appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_KIOSK_ENABLED, false)
+    }
 
-    fun getAllowedPackages(context: Context): Set<String> {
-        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    override fun setKioskEnabled(enabled: Boolean) {
+        appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+            .edit { putBoolean(KEY_KIOSK_ENABLED, enabled) }
+    }
+
+    override fun getAllowedPackages(): Set<String> {
+        return appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .getStringSet(KEY_ALLOWED_APP_PACKAGES, emptySet())
             .orEmpty()
             .toSet()
     }
 
-    fun setAllowedPackages(context: Context, packageNames: Set<String>) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    override fun setAllowedPackages(packageNames: Set<String>) {
+        appContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .edit { putStringSet(KEY_ALLOWED_APP_PACKAGES, packageNames) }
     }
 
-    fun getAllowedLaunchablePackages(context: Context): Set<String> {
-        val launchablePackages = getLaunchableApps(context)
+    override fun getAllowedLaunchablePackages(): Set<String> {
+        val launchablePackages = getLaunchableApps()
             .mapTo(mutableSetOf()) { it.packageName }
 
-        return getAllowedPackages(context)
+        return getAllowedPackages()
             .filterTo(mutableSetOf()) { it in launchablePackages }
     }
 
-    fun getLaunchableApps(context: Context): List<LaunchableApp> {
-        val packageManager = context.packageManager
+    override fun getLaunchableApps(): List<LaunchableApp> {
+        val packageManager = appContext.packageManager
         val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
         }
@@ -49,7 +52,7 @@ object KioSyncAppAllowlist {
             .asSequence()
             .mapNotNull { resolveInfo ->
                 val packageName = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
-                if (packageName == context.packageName) {
+                if (packageName == appContext.packageName) {
                     return@mapNotNull null
                 }
 
@@ -72,5 +75,11 @@ object KioSyncAppAllowlist {
             @Suppress("DEPRECATION")
             queryIntentActivities(intent, 0)
         }
+    }
+
+    private companion object {
+        const val PREF_NAME = "kiosync_settings"
+        const val KEY_KIOSK_ENABLED = "kiosk_enabled"
+        const val KEY_ALLOWED_APP_PACKAGES = "allowed_app_packages"
     }
 }
